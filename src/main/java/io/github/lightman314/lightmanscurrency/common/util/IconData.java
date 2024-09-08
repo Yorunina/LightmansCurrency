@@ -113,7 +113,11 @@ public abstract class IconData {
 
 		private static IconData loadItem(@Nonnull CompoundTag tag)
 		{
-			ItemStack stack = ItemStack.of(tag.getCompound("Item"));
+			CompoundTag itemNbt = tag.getCompound("Item");
+			if (!itemNbt.contains("Count")) {
+				itemNbt.putByte("Count", (byte) 1);
+			}
+			ItemStack stack = ItemStack.of(itemNbt);
 			String countText = null;
 			if(tag.contains("Text"))
 				countText = tag.getString("Text");

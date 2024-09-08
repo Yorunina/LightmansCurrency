@@ -1,20 +1,25 @@
 package io.github.lightman314.lightmanscurrency.api.traders;
 
-import java.util.*;
-import java.util.function.Consumer;
-import java.util.function.Function;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
 import com.google.common.collect.ImmutableList;
-import com.google.gson.JsonSyntaxException;
+import com.google.common.collect.Lists;
+import com.google.gson.*;
 import io.github.lightman314.lightmanscurrency.LCText;
+import io.github.lightman314.lightmanscurrency.LightmansCurrency;
+import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.PostTradeEvent;
+import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.PreTradeEvent;
+import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.TradeCostEvent;
+import io.github.lightman314.lightmanscurrency.api.misc.EasyText;
+import io.github.lightman314.lightmanscurrency.api.misc.player.OwnerData;
+import io.github.lightman314.lightmanscurrency.api.misc.player.PlayerReference;
+import io.github.lightman314.lightmanscurrency.api.misc.world.WorldPosition;
 import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
 import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
 import io.github.lightman314.lightmanscurrency.api.money.value.MoneyStorage;
+import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
 import io.github.lightman314.lightmanscurrency.api.money.value.holder.IMoneyHolder;
+import io.github.lightman314.lightmanscurrency.api.network.LazyPacketData;
+import io.github.lightman314.lightmanscurrency.api.notifications.Notification;
+import io.github.lightman314.lightmanscurrency.api.notifications.NotificationData;
 import io.github.lightman314.lightmanscurrency.api.ownership.Owner;
 import io.github.lightman314.lightmanscurrency.api.ownership.builtin.FakeOwner;
 import io.github.lightman314.lightmanscurrency.api.ownership.builtin.PlayerOwner;
@@ -22,73 +27,52 @@ import io.github.lightman314.lightmanscurrency.api.stats.StatKey;
 import io.github.lightman314.lightmanscurrency.api.stats.StatKeys;
 import io.github.lightman314.lightmanscurrency.api.stats.StatTracker;
 import io.github.lightman314.lightmanscurrency.api.taxes.ITaxCollector;
+import io.github.lightman314.lightmanscurrency.api.taxes.ITaxable;
 import io.github.lightman314.lightmanscurrency.api.taxes.TaxAPI;
+import io.github.lightman314.lightmanscurrency.api.taxes.reference.TaxableReference;
+import io.github.lightman314.lightmanscurrency.api.taxes.reference.builtin.TaxableTraderReference;
+import io.github.lightman314.lightmanscurrency.api.traders.blockentity.TraderBlockEntity;
+import io.github.lightman314.lightmanscurrency.api.traders.blocks.ITraderBlock;
 import io.github.lightman314.lightmanscurrency.api.traders.menu.storage.ITraderStorageMenu;
+import io.github.lightman314.lightmanscurrency.api.traders.permissions.BooleanPermission;
+import io.github.lightman314.lightmanscurrency.api.traders.permissions.PermissionOption;
+import io.github.lightman314.lightmanscurrency.api.traders.trade.TradeData;
+import io.github.lightman314.lightmanscurrency.api.upgrades.IUpgradeable;
+import io.github.lightman314.lightmanscurrency.api.upgrades.UpgradeType;
 import io.github.lightman314.lightmanscurrency.client.gui.screen.inventory.TraderScreen;
 import io.github.lightman314.lightmanscurrency.client.gui.screen.inventory.TraderStorageScreen;
 import io.github.lightman314.lightmanscurrency.client.gui.screen.inventory.traderstorage.settings.SettingsSubTab;
 import io.github.lightman314.lightmanscurrency.client.gui.screen.inventory.traderstorage.settings.TraderSettingsClientTab;
 import io.github.lightman314.lightmanscurrency.client.gui.screen.inventory.traderstorage.settings.core.*;
-import io.github.lightman314.lightmanscurrency.api.misc.EasyText;
+import io.github.lightman314.lightmanscurrency.client.gui.widget.TradeButtonArea;
+import io.github.lightman314.lightmanscurrency.common.bank.BankAccount;
+import io.github.lightman314.lightmanscurrency.common.core.ModItems;
+import io.github.lightman314.lightmanscurrency.common.emergency_ejection.IDumpable;
 import io.github.lightman314.lightmanscurrency.common.menus.TraderMenu;
 import io.github.lightman314.lightmanscurrency.common.menus.TraderStorageMenu;
 import io.github.lightman314.lightmanscurrency.common.menus.providers.EasyMenuProvider;
 import io.github.lightman314.lightmanscurrency.common.menus.validation.EasyMenu;
 import io.github.lightman314.lightmanscurrency.common.menus.validation.MenuValidator;
 import io.github.lightman314.lightmanscurrency.common.menus.validation.types.SimpleValidator;
+import io.github.lightman314.lightmanscurrency.common.notifications.categories.TraderCategory;
+import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.*;
 import io.github.lightman314.lightmanscurrency.common.player.LCAdminMode;
-import io.github.lightman314.lightmanscurrency.api.taxes.ITaxable;
 import io.github.lightman314.lightmanscurrency.common.taxes.TaxEntry;
-import io.github.lightman314.lightmanscurrency.api.misc.world.WorldPosition;
-import io.github.lightman314.lightmanscurrency.api.taxes.reference.TaxableReference;
-import io.github.lightman314.lightmanscurrency.api.taxes.reference.builtin.TaxableTraderReference;
 import io.github.lightman314.lightmanscurrency.common.traders.TraderSaveData;
+import io.github.lightman314.lightmanscurrency.common.traders.permissions.Permissions;
 import io.github.lightman314.lightmanscurrency.common.traders.rules.ITradeRuleHost;
-import io.github.lightman314.lightmanscurrency.api.network.LazyPacketData;
+import io.github.lightman314.lightmanscurrency.common.traders.rules.TradeRule;
 import io.github.lightman314.lightmanscurrency.common.upgrades.Upgrades;
+import io.github.lightman314.lightmanscurrency.common.util.IClientTracker;
+import io.github.lightman314.lightmanscurrency.common.util.IconData;
+import io.github.lightman314.lightmanscurrency.network.message.trader.SPacketSyncUsers;
 import io.github.lightman314.lightmanscurrency.util.EnumUtil;
+import io.github.lightman314.lightmanscurrency.util.InventoryUtil;
 import io.github.lightman314.lightmanscurrency.util.MathUtil;
 import net.minecraft.ResourceLocationException;
-import net.minecraft.core.registries.Registries;
-
-import com.google.common.collect.Lists;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
-import io.github.lightman314.lightmanscurrency.LightmansCurrency;
-import io.github.lightman314.lightmanscurrency.api.traders.blockentity.TraderBlockEntity;
-import io.github.lightman314.lightmanscurrency.api.traders.blocks.ITraderBlock;
-import io.github.lightman314.lightmanscurrency.client.gui.widget.TradeButtonArea;
-import io.github.lightman314.lightmanscurrency.common.util.IconData;
-import io.github.lightman314.lightmanscurrency.common.bank.BankAccount;
-import io.github.lightman314.lightmanscurrency.common.emergency_ejection.IDumpable;
-import io.github.lightman314.lightmanscurrency.api.notifications.Notification;
-import io.github.lightman314.lightmanscurrency.api.notifications.NotificationData;
-import io.github.lightman314.lightmanscurrency.common.notifications.categories.TraderCategory;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.AddRemoveAllyNotification;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.ChangeAllyPermissionNotification;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.ChangeCreativeNotification;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.ChangeNameNotification;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.ChangeOwnerNotification;
-import io.github.lightman314.lightmanscurrency.common.notifications.types.settings.ChangeSettingNotification;
-import io.github.lightman314.lightmanscurrency.api.misc.player.OwnerData;
-import io.github.lightman314.lightmanscurrency.api.misc.player.PlayerReference;
-import io.github.lightman314.lightmanscurrency.common.traders.permissions.Permissions;
-import io.github.lightman314.lightmanscurrency.api.traders.permissions.BooleanPermission;
-import io.github.lightman314.lightmanscurrency.api.traders.permissions.PermissionOption;
-import io.github.lightman314.lightmanscurrency.common.traders.rules.TradeRule;
-import io.github.lightman314.lightmanscurrency.api.traders.trade.TradeData;
-import io.github.lightman314.lightmanscurrency.common.util.IClientTracker;
-import io.github.lightman314.lightmanscurrency.common.core.ModItems;
-import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.PostTradeEvent;
-import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.PreTradeEvent;
-import io.github.lightman314.lightmanscurrency.api.events.TradeEvent.TradeCostEvent;
-import io.github.lightman314.lightmanscurrency.network.message.trader.SPacketSyncUsers;
-import io.github.lightman314.lightmanscurrency.api.upgrades.UpgradeType;
-import io.github.lightman314.lightmanscurrency.api.upgrades.IUpgradeable;
-import io.github.lightman314.lightmanscurrency.util.InventoryUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -121,6 +105,12 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.server.ServerLifecycleHooks;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 public abstract class TraderData implements IClientTracker, IDumpable, IUpgradeable, ITraderSource, ITradeRuleHost, ITaxable {
 	
@@ -956,16 +946,20 @@ public abstract class TraderData implements IClientTracker, IDumpable, IUpgradea
 	
 	public final void loadFromJson(JsonObject json) throws JsonSyntaxException, ResourceLocationException {
 		this.owner.SetOwner(FakeOwner.of(GsonHelper.getAsString(json, "OwnerName", "Server")));
-		
 		if(json.has("Name"))
 			this.customName = GsonHelper.getAsString(json, "Name");
 		
 		if(json.has("Rules"))
 			this.rules = TradeRule.Parse(GsonHelper.getAsJsonArray(json, "Rules"), this);
-		
+
+		if(json.has("CustomIcon"))
+		{
+			JsonObject customIcon = GsonHelper.getAsJsonObject(json, "CustomIcon");
+			this.customIcon = IconData.load(json2NBT(customIcon));
+			this.markDirty(this::saveCustomIcon);
+		}
 		this.loadAdditionalFromJson(json);
 	}
-	
 	protected abstract void loadAdditionalFromJson(JsonObject json) throws JsonSyntaxException, ResourceLocationException;
 	
 	public final CompoundTag savePersistentData() {
@@ -976,7 +970,39 @@ public abstract class TraderData implements IClientTracker, IDumpable, IUpgradea
 		this.saveAdditionalPersistentData(compound);
 		return compound;
 	}
-	
+	public static CompoundTag json2NBT(JsonObject jsonObject) {
+		CompoundTag nbtCompound = new CompoundTag();
+
+		for (var entry : jsonObject.entrySet()) {
+			String key = entry.getKey();
+			JsonElement jsonElement = entry.getValue();
+
+			if (jsonElement.isJsonPrimitive()) {
+				JsonPrimitive primitive = jsonElement.getAsJsonPrimitive();
+				if (primitive.isNumber()) {
+					if (primitive.getAsNumber() instanceof Integer i) {
+						nbtCompound.putInt(key, i);
+					} else if (primitive.getAsNumber() instanceof Float i) {
+						nbtCompound.putFloat(key, i);
+					} else if (primitive.getAsNumber() instanceof Double i) {
+						nbtCompound.putDouble(key, i);
+					} else if (primitive.getAsNumber() instanceof Short i) {
+						nbtCompound.putShort(key, i);
+					}
+				} else if (primitive.isBoolean()) {
+					nbtCompound.putBoolean(key, primitive.getAsBoolean());
+				} else if (primitive.isString()) {
+					nbtCompound.putString(key, primitive.getAsString());
+				}
+				// Add more conversions as needed for other primitive types
+			} else if (jsonElement.isJsonObject() || jsonElement.isJsonArray()) {
+				CompoundTag nestedCompound = json2NBT(jsonElement.getAsJsonObject());
+				nbtCompound.put(key, nestedCompound);
+			}
+			// Add more conversions as needed for other types like arrays or nested objects
+		}
+		return nbtCompound;
+	}
 	protected abstract void saveAdditionalPersistentData(CompoundTag compound);
 	
 	public final void loadPersistentData(CompoundTag compound) {
